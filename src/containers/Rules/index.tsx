@@ -1,12 +1,13 @@
 import * as React from 'react'
 import produce from 'immer'
 import { translate } from 'react-i18next'
-import { SortableElement, SortableHandle, arrayMove } from 'react-sortable-hoc'
+// import { SortableHandle, arrayMove } from 'react-sortable-hoc'
 import { Header, Icon, Card, Row, Col, Select, Option, Input } from '@components'
 import { I18nProps, RuleType, Rule, BaseRouterProps } from '@models'
 import './style.scss'
 import { storeKeys } from '@lib/createStore'
 import { inject } from 'mobx-react'
+import { List, AutoSizer } from 'react-virtualized'
 
 interface RulesProps extends BaseRouterProps, I18nProps {}
 interface RulesState {
@@ -107,37 +108,38 @@ class Rules extends React.Component<RulesProps, RulesState> {
         })
     }
 
-    onSortEnd = ({ oldIndex, newIndex }) => {
-        this.setState({
-            rules: arrayMove(this.state.rules, oldIndex, newIndex)
-        })
-    }
+    // onSortEnd = ({ oldIndex, newIndex }) => {
+    //     this.setState({
+    //         rules: arrayMove(this.state.rules, oldIndex, newIndex)
+    //     })
+    // }
 
-    renderRules = ({ rules }) => {
-        const SortableItem = SortableElement<{ rule: Rule, idx: number }>(itemProps => {
-            const { rule, idx } = itemProps
-            return this.renderRuleItem(rule, idx)
-        })
+    // renderRules = ({ rules }) => {
+    //     const SortableItem = SortableElement<{ rule: Rule, idx: number }>(itemProps => {
+    //         const { rule, idx } = itemProps
+    //         return this.renderRuleItem(rule, idx)
+    //     })
 
-        return <ul>
-            {
-                rules.map((rule: Rule, idx: number) => {
-                    const isFinal = rule.type === 'FINAL'
-                    return <SortableItem key={idx} index={idx} idx={idx} rule={rule} disabled={isFinal} />
-                })
-            }
-        </ul>
-    }
+    //     return <ul>
+    //         {
+    //             rules.map((rule: Rule, idx: number) => {
+    //                 const isFinal = rule.type === 'FINAL'
+    //                 return <SortableItem key={idx} index={idx} idx={idx} rule={rule} disabled={isFinal} />
+    //             })
+    //         }
+    //     </ul>
+    // }
 
-    renderRuleItem = (rule: Rule, index) => {
-        const { modifiedIndex, proxies } = this.state
+    renderRuleItem = ({ index, key }) => {
+        const { modifiedIndex, proxies, rules } = this.state
+        const rule = rules[index]
         const isFinal = rule.type === 'FINAL'
-        const DragHandle = SortableHandle(() => <Icon type="drag" size={16} />)
+        // const DragHandle = SortableHandle(() => <Icon type="drag" size={16} />)
         return (
-            <li className="rule-item" key={index}>
+            <li className="rule-item" key={key}>
                 <Row className="rule-item-row" gutter={24} align="middle">
                     <Col className="drag-handler" span={1}>
-                        {!isFinal && <DragHandle />}
+                        {index}
                     </Col>
                     <Col className="rule-type" span={5}>
                         {
@@ -213,9 +215,23 @@ class Rules extends React.Component<RulesProps, RulesState> {
 
                 <Card className="rules-card">
                     <div className="rules">
-                        {
-                            rules.map((rule: Rule, index) => this.renderRuleItem(rule, index))
-                        }
+                        <AutoSizer>
+                            {({ height, width }) => (
+                                <List
+                                 height={height}
+                                 width={width}
+                                 rowCount={rules.length}
+                                 rowRenderer={this.renderRuleItem}
+                                 rowHeight={50}
+                                 overscanRowCount={10}
+                                 >
+
+                                </List>
+                            )}
+                        </AutoSizer>
+                        {/* {
+                            rules.map((rule: Rule, index) => this.renderRuleItem({ index, key: index }))
+                        } */}
                         {/* <SortableList rules={rules} onSortEnd={this.onSortEnd} useDragHandle={true} /> */}
                     </div>
                 </Card>
