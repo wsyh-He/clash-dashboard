@@ -58,6 +58,9 @@ export default {
             alterId: 'AlterId',
             tls: 'TLS'
         },
-        groupTitle: 'Policy Group'
+        groupTitle: 'Policy Group',
+        expandText: 'Expand',
+        collapseText: 'Collapse',
+        speedTestText: 'Speed Test'
     }
 }

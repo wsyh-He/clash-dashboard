@@ -1,29 +1,107 @@
 import { observable, action, runInAction } from 'mobx'
 import * as yaml from 'yaml'
 import * as Models from '@models'
-import { jsBridge } from '@lib/jsBridge'
-import { getConfig } from '@lib/request'
-import { getLocalStorageItem } from '@lib/helper'
+import { jsBridge, isClashX } from '@lib/jsBridge'
+import * as API from '@lib/request'
+import { getLocalStorageItem, setLocalStorageItem, partition } from '@lib/helper'
 
 export class ConfigStore {
 
     @observable
-    config: Models.Config = {}
+    config: Models.Config = {
+        proxy: [],
+        proxyGroup: [],
+        rules: []
+    }
 
     @observable
-    public state: 'pending' | 'ok' | 'error' = 'pending'
+    data: Models.Data = {
+        general: {},
+        proxy: [],
+        proxyGroup: [],
+        rules: []
+    }
+
+    @observable
+    apiInfo: Models.APIInfo = {
+        hostname: '127.0.0.1',
+        port: '8080',
+        secret: ''
+    }
+
+    @observable
+    showAPIModal = false
+
+    @observable
+    clashxData: Models.ClashXData = {
+        startAtLogin: false,
+        systemProxy: false
+    }
+
+    @action
+    async fetchAPIInfo () {
+        if (isClashX()) {
+            const apiInfo = await jsBridge.getAPIInfo()
+            runInAction(() => {
+                this.apiInfo = { hostname: apiInfo.host, port: apiInfo.port, secret: apiInfo.secret }
+            })
+            return
+        }
+        const info = await API.getExternalControllerConfig()
+
+        runInAction(() => {
+            this.apiInfo = { ...info }
+        })
+    }
+
+    @action
+    async fetchData () {
+        const [{ data: general }, rawProxies, rules] = await Promise.all([API.getConfig(), API.getProxies(), API.getRules()])
+
+        runInAction(() => {
+            this.data.general = {
+                port: general.port,
+                socksPort: general['socks-port'],
+                redirPort: general['redir-port'],
+                mode: general.mode,
+                logLevel: general['log-level'],
+                allowLan: general['allow-lan']
+            }
+
+            const policyGroup = new Set(['Selector', 'URLTest', 'Fallback', 'LoadBalance'])
+            const unUsedProxy = new Set(['DIRECT', 'REJECT', 'GLOBAL'])
+            const proxies = Object.keys(rawProxies.data.proxies)
+                .filter(key => !unUsedProxy.has(key))
+                .map(key => ({ ...rawProxies.data.proxies[key], name: key }))
+            const [proxy, groups] = partition(proxies, proxy => !policyGroup.has(proxy.type))
+            this.data.proxy = proxy as API.Proxy[]
+            this.data.proxyGroup = groups as API.Group[]
+
+            this.data.rules = rules.data.rules
+        })
+    }
+
+    @action
+    async fetchClashXData () {
+        const startAtLogin = await jsBridge.getStartAtLogin()
+        const systemProxy = await jsBridge.isSystemProxySet()
+
+        runInAction(() => {
+            this.clashxData = {
+                startAtLogin,
+                systemProxy
+            }
+        })
+    }
 
     @action
     async fetchAndParseConfig () {
-        this.state = 'pending'
-
         const rawConfig = await jsBridge.readConfigString()
 
         runInAction(() => {
             // emit error when config is empty
             // because read config might be error
             if (!rawConfig) {
-                this.state = 'error'
                 return
             }
 
@@ -61,17 +139,16 @@ export class ConfigStore {
                 proxyGroup,
                 rules: rule || []
             }
-            this.state = 'ok'
         })
     }
 
     @action
     async fetchConfig () {
-        const { data: config } = await getConfig()
+        const { data: config } = await API.getConfig()
         this.config = {
             general: {
                 port: config.port,
-                socksPort: config['socket-port'],
+                socksPort: config['socks-port'],
                 redirPort: config['redir-port'],
                 allowLan: config['allow-lan'],
                 mode: config.mode,
@@ -103,6 +180,22 @@ export class ConfigStore {
         const data = yaml.stringify(config)
         // console.log(data)
         jsBridge.writeConfigWithString(data)
+    }
+
+    @action
+    async updateAPIInfo (info: Models.APIInfo) {
+        const { hostname, port, secret } = info
+        setLocalStorageItem('externalControllerAddr', hostname)
+        setLocalStorageItem('externalControllerPort', port)
+        setLocalStorageItem('secret', secret)
+        window.location.reload()
+    }
+
+    @action
+    setShowAPIModal (visible: boolean) {
+        runInAction(() => {
+            this.showAPIModal = visible
+        })
     }
 
     @action

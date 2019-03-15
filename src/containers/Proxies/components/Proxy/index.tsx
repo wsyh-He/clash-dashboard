@@ -1,14 +1,15 @@
 import * as React from 'react'
 import classnames from 'classnames'
-import { Icon } from '@components'
-import { BaseComponentProps, Proxy as IProxy, TagColors } from '@models'
-import { getProxyDelay } from '@lib/request'
-import { to, getLocalStorageItem, setLocalStorageItem, sample, noop } from '@lib/helper'
+import { BaseComponentProps, TagColors } from '@models'
+import { getProxyDelay, Proxy as IProxy } from '@lib/request'
+import EE, { Action } from '@lib/event'
+import { isClashX, jsBridge } from '@lib/jsBridge'
+import { to, getLocalStorageItem, setLocalStorageItem, sample } from '@lib/helper'
 import './style.scss'
 
 interface ProxyProps extends BaseComponentProps {
     config: IProxy
-    onEdit?: (e: React.MouseEvent<HTMLElement>) => void
+    // onEdit?: (e: React.MouseEvent<HTMLElement>) => void
 }
 
 interface ProxyState {
@@ -18,8 +19,6 @@ interface ProxyState {
 }
 
 export class Proxy extends React.Component<ProxyProps , ProxyState> {
-    private mount = true
-
     constructor (props) {
         super(props)
 
@@ -49,17 +48,25 @@ export class Proxy extends React.Component<ProxyProps , ProxyState> {
         }
     }
 
-    componentWillUnmount () {
-        this.mount = false
+    componentDidMount () {
+        EE.subscribe(Action.SPEED_NOTIFY, this.speedTest)
     }
 
-    async componentDidMount () {
-        const { config } = this.props
-        const [res, err] = await to(getProxyDelay(config.name))
+    componentWillUnmount () {
+        EE.unsubscribe(Action.SPEED_NOTIFY, this.speedTest)
+    }
 
-        if (!this.mount) {
-            return
+    speedTest = async () => {
+        const { config } = this.props
+        if (isClashX()) {
+            const delay = await jsBridge.getProxyDelay(config.name)
+            if (delay === 0) {
+                return this.setState({ hasError: true })
+            }
+            return this.setState({ delay })
         }
+
+        const [res, err] = await to(getProxyDelay(config.name))
 
         if (err) {
             return this.setState({ hasError: true })
@@ -70,7 +77,7 @@ export class Proxy extends React.Component<ProxyProps , ProxyState> {
     }
 
     render () {
-        const { config, className, onEdit = noop } = this.props
+        const { config, className } = this.props
         const { delay, color, hasError } = this.state
         const backgroundColor = hasError ? undefined : color
 
@@ -79,7 +86,7 @@ export class Proxy extends React.Component<ProxyProps , ProxyState> {
                 <span className="proxy-type" style={{ backgroundColor }}>{config.type}</span>
                 <p className="proxy-name">{config.name}</p>
                 <p className="proxy-delay">{delay === -1 ? '-' : `${delay}ms`}</p>
-                <Icon className="proxy-editor" type="setting" onClick={onEdit} />
+                {/* <Icon className="proxy-editor" type="setting" onClick={onEdit} /> */}
             </div>
         )
     }

@@ -1,6 +1,6 @@
 import axios, { AxiosInstance } from 'axios'
 import { Partial, getLocalStorageItem } from '@lib/helper'
-import { isClashX } from '@lib/jsBridge'
+import { isClashX, jsBridge } from '@lib/jsBridge'
 import { rootStores } from '@lib/createStore'
 import { StreamReader } from './streamer'
 
@@ -9,7 +9,7 @@ let logsStreamReader = null
 
 export interface Config {
     port: number
-    'socket-port': number
+    'socks-port': number
     'redir-port': number
     'allow-lan': boolean
     mode: string
@@ -17,19 +17,31 @@ export interface Config {
 }
 
 export interface Rules {
-    rules: { name: string, payload: string }[]
+    rules: Rule[]
+}
+
+export interface Rule {
+    type: string
+    payload: string
+    proxy: string
 }
 
 export interface Proxies {
     proxies: {
-        [key: string]: Proxy
+        [key: string]: Proxy | Group
     }
 }
 
 export interface Proxy {
-    type: 'Direct' | 'Selector' | 'Reject' | 'URLTest' | 'Shadowsocks' | 'Vmess' | 'Socks' | 'Fallback'
-    now?: string
-    all?: string[]
+    name: string
+    type: 'Direct' | 'Reject' | 'Shadowsocks' | 'Vmess' | 'Socks' | 'Http'
+}
+
+export interface Group {
+    name: string
+    type: 'Selector' | 'URLTest' | 'Fallback'
+    now: string
+    all: string[]
 }
 
 export async function getConfig () {
@@ -39,7 +51,7 @@ export async function getConfig () {
 
 export async function updateConfig (config: Partial<Config>) {
     const req = await getInstance()
-    return req.put<void>('configs', config)
+    return req.patch<void>('configs', config)
 }
 
 export async function getRules () {
@@ -66,7 +78,7 @@ export async function getProxyDelay (name: string) {
     const req = await getInstance()
     return req.get<{ delay: number }>(`proxies/${name}/delay`, {
         params: {
-            timeout: 20000,
+            timeout: 5000,
             url: 'http://www.gstatic.com/generate_204'
         }
     })
@@ -74,7 +86,7 @@ export async function getProxyDelay (name: string) {
 
 export async function changeProxySelected (name: string, select: string) {
     const req = await getInstance()
-    return req.get<void>(`proxies/${name}`, { data: { name: select } })
+    return req.put<void>(`proxies/${name}`, { name: select })
 }
 
 export async function getInstance () {
@@ -89,22 +101,31 @@ export async function getInstance () {
     } = await getExternalControllerConfig()
 
     instance = axios.create({
-        baseURL: `http://${hostname}:${port}`,
+        baseURL: `//${hostname}:${port}`,
         headers: secret ? { Authorization: `Bearer ${secret}` } : {}
     })
+
+    instance.interceptors.response.use(
+        resp => resp,
+        err => {
+            if (!err.response || err.response.status === 401) {
+                rootStores.store.setShowAPIModal(true)
+            }
+            throw err
+        }
+    )
 
     return instance
 }
 
 export async function getExternalControllerConfig () {
     if (isClashX()) {
-        await rootStores.config.fetchAndParseConfig()
-        const general = rootStores.config.config.general
+        const info = await jsBridge.getAPIInfo()
 
         return {
-            hostname: general.externalControllerAddr,
-            port: general.externalControllerPort,
-            secret: general.secret
+            hostname: info.host,
+            port: info.port,
+            secret: info.secret
         }
     }
 
@@ -125,7 +146,8 @@ export async function getLogsStreamReader () {
     }
     const externalController = await getExternalControllerConfig()
     const { data: config } = await getConfig()
-    const logUrl = `http://${externalController.hostname}:${externalController.port}/logs?level=${config['log-level']}`
-    logsStreamReader = new StreamReader({ url: logUrl, bufferLength: 200 })
+    const logUrl = `//${externalController.hostname}:${externalController.port}/logs?level=${config['log-level']}`
+    const auth = externalController.secret ? { Authorization: `Bearer ${externalController.secret}` } : {}
+    logsStreamReader = new StreamReader({ url: logUrl, bufferLength: 200, headers: auth })
     return logsStreamReader
 }

@@ -2,9 +2,12 @@
 const { resolve } = require('path')
 const { CheckerPlugin, TsConfigPathsPlugin } = require('awesome-typescript-loader')
 const StyleLintPlugin = require('stylelint-webpack-plugin')
+const MiniCssExtractPlugin = require("mini-css-extract-plugin")
 const HtmlWebpackPlugin = require('html-webpack-plugin')
-const OfflinePlugin = require('offline-plugin')
+// const OfflinePlugin = require('offline-plugin')
 const autoprefixer = require('autoprefixer')
+const Fiber = require('fibers')
+const devMode = process.env.NODE_ENV !== 'production'
 
 module.exports = {
     resolve: {
@@ -34,10 +37,10 @@ module.exports = {
             {
                 test: /\.scss$/,
                 loaders: [
-                    'style-loader',
+                    devMode ? 'style-loader' : MiniCssExtractPlugin.loader,
                     { loader: 'css-loader', options: { importLoaders: 1 } },
                     { loader: 'postcss-loader', options: { plugins: [autoprefixer] } },
-                    'sass-loader',
+                    { loader: 'sass-loader', options: { implementation: require('sass'), fiber: Fiber } }
                 ],
             },
             {
@@ -53,15 +56,21 @@ module.exports = {
         new CheckerPlugin(),
         new StyleLintPlugin(),
         new HtmlWebpackPlugin({ template: 'index.html.ejs' }),
-        new OfflinePlugin({
-            ServiceWorker: {
-                events: true,
-            },
-            externals: [
-                'https://cdnjs.cloudflare.com/ajax/libs/react/16.4.2/umd/react.production.min.js',
-                'https://cdnjs.cloudflare.com/ajax/libs/react-dom/16.4.2/umd/react-dom.production.min.js',
-            ],
-        }),
+        new MiniCssExtractPlugin({
+            // Options similar to the same options in webpackOptions.output
+            // both options are optional
+            filename: devMode ? '[name].css' : '[name].[hash].css',
+            chunkFilename: devMode ? '[id].css' : '[id].[hash].css',
+        })
+        // new OfflinePlugin({
+        //     ServiceWorker: {
+        //         events: true,
+        //     },
+        //     externals: [
+        //         'https://cdnjs.cloudflare.com/ajax/libs/react/16.4.2/umd/react.production.min.js',
+        //         'https://cdnjs.cloudflare.com/ajax/libs/react-dom/16.4.2/umd/react-dom.production.min.js',
+        //     ],
+        // }),
     ],
     // externals: {
     //     react: 'React',
